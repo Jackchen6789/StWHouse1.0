@@ -1,0 +1,16 @@
+{
+  "C_Cpp.intelliSenseEngine": "default",
+  "idf.extensionActivationMode": "always",
+  "idf.currentSetup": "e:\\esp32-idf\\v5.5.1\\esp-idf",
+  "idf.flashType": "UART",
+  "idf.portWin": "COM5",
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32s3"
+  },
+  "clangd.path": "e:\\esp32-idf-path\\tools\\esp-clang\\esp-19.1.2_20250312\\esp-clang\\bin\\clangd.exe",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=**",
+    "--compile-commands-dir=e:\\CourseDesign\\StWHouse1.0\\ESP32\\ESP32\\build"
+  ]
+}

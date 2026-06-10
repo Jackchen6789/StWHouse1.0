@@ -1,0 +1,26 @@
+# dot files
+/.vscode/launch.json
+/.settings
+/.eide/log
+/.eide.usr.ctx.json
+
+# project out
+/build
+/bin
+/obj
+/out
+
+# eide template
+*.ept
+*.eide-template
+
+# Keil MDK output
+/Objects/
+/Listings/
+/DebugConfig/
+
+# Keil user-specific GUI state
+Project.uvguix.*
+
+# Network config with secrets
+network_config.txt

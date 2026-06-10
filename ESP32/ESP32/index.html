@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>仓瞳智能仓储分布式大屏 - 旗舰版</title>
+    <script src="https://cdn.staticfile.org/echarts/5.4.3/echarts.min.js"></script>
+    <script src="https://cdn.staticfile.org/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+        body { 
+            background: radial-gradient(circle at 50% 10%, #1e1b4b 0%, #0f172a 70%); 
+            color: #f8fafc; 
+            padding: 24px; 
+            min-height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+        }
+        .container { width: 100%; max-width: 1280px; }
+        header { 
+            text-align: center; 
+            margin-bottom: 25px; 
+            border-bottom: 2px solid rgba(56, 189, 248, 0.1);
+            padding-bottom: 15px;
+            position: relative;
+        }
+        header h1 { 
+            font-size: 34px; 
+            font-weight: 800; 
+            letter-spacing: 2px;
+            background: linear-gradient(to right, #ffffff, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 30px rgba(56,189,248,0.2); 
+        }
+        header .sub { font-size: 14px; color: #94a3b8; margin-top: 8px; font-family: monospace; }
+        .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background-color: #ef4444; box-shadow: 0 0 10px #ef4444; }
+        .status-ready .status-dot { background-color: #10b981; box-shadow: 0 0 12px #10b981; animation: breathe 1.5s infinite ease-in-out; }
+        .grid-layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 20px; }
+        .card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border-radius: 16px; padding: 20px; border: 1px solid rgba(255, 255, 255, 0.05); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2); transition: all 0.3s ease; }
+        .card:hover { transform: translateY(-4px); border-color: rgba(56, 189, 248, 0.3); box-shadow: 0 8px 30px rgba(56, 189, 248, 0.1); }
+        .card-header { font-size: 13px; color: #94a3b8; font-weight: 600; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px;}
+        .card-main { display: flex; align-items: baseline; justify-content: space-between; }
+        .val { font-size: 38px; font-weight: 800; font-family: 'Courier New', Courier, monospace; }
+        .unit { font-size: 14px; color: #64748b; font-weight: 600; }
+        .chart-container { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.05); padding: 24px; margin-bottom: 20px; height: 380px; width: 100%; }
+        .bottom-layout { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; }
+        .sec-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border-radius: 16px; padding: 20px; border: 1px solid rgba(255, 255, 255, 0.05); display: flex; flex-direction: column; justify-content: space-between; }
+        .sec-title { font-size: 15px; font-weight: 700; color: #cbd5e1; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); letter-spacing: 0.5px; }
+        .sec-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+        .sec-item { background: #0f172a; padding: 20px 10px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; gap: 12px; border: 1px solid rgba(255,255,255,0.02); }
+        .sec-label { font-size: 13px; color: #94a3b8; }
+        .badge { padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; text-align: center; min-width: 70px;}
+        .badge-ok { background: rgba(16,185,129,0.1); color: #10b981; border: 1px solid rgba(16,185,129,0.2); }
+        .badge-warn { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.4); animation: pulse 1.6s infinite; }
+        .badge-info { background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); }
+        .ctrl-group { display: flex; flex-direction: column; gap: 16px; }
+        .ctrl-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border-radius: 16px; padding: 20px; border: 1px solid rgba(255, 255, 255, 0.05); }
+        .slider-wrapper { margin: 15px 0; }
+        input[type=range] { -webkit-appearance: none; width: 100%; height: 8px; background: #1e293b; border-radius: 5px; outline: none; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #38bdf8; box-shadow: 0 0 10px #38bdf8; cursor: pointer; transition: transform 0.1s; }
+        input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+        input[type=range]:disabled { opacity: 0.3; cursor: not-allowed; }
+        input[type=range]:disabled::-webkit-slider-thumb { background: #64748b; box-shadow: none; cursor: not-allowed; transform: none; }
+        .slider-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; }
+        .btn-stop { width: 100%; padding: 12px; background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); color: white; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3); transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 6px; }
+        .btn-stop:hover { background: linear-gradient(135deg, #f87171 0%, #dc2626 100%); box-shadow: 0 6px 20px rgba(239, 68, 68, 0.5); transform: translateY(-1px); }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); } 70% { box-shadow: 0 0 0 8px rgba(239,68,68,0); } 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); } }
+        @keyframes breathe { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; transform: scale(1.1); } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>仓<span>瞳</span> 智能仓储数智化管理大屏</h1>
+            <div class="sub" id="status-container">
+                <span class="status-dot"></span>系统服务状态: <span id="status" style="font-weight:bold;">连接中...</span>
+            </div>
+        </header>
+
+        <div class="grid-layout">
+            <div class="card">
+                <div class="card-header">🌡️ 环境温度</div>
+                <div class="card-main"><div class="val" id="t_val" style="color: #f43f5e;">--.-</div><div class="unit">℃</div></div>
+            </div>
+            <div class="card">
+                <div class="card-header">💧 环境湿度</div>
+                <div class="card-main"><div class="val" id="h_val" style="color: #38bdf8;">--.-</div><div class="unit">%</div></div>
+            </div>
+            <div class="card">
+                <div class="card-header">💨 烟雾浓度 (MQ2)</div>
+                <div class="card-main"><div class="val" id="m_val" style="color: #fbbf24;">----</div><div class="unit">ADC</div></div>
+            </div>
+            <div class="card">
+                <div class="card-header">🌀 风机实时转速</div>
+                <div class="card-main"><div class="val" id="f_val" style="color: #34d399;">--</div><div class="unit">%</div></div>
+            </div>
+            <div class="card">
+                <div class="card-header">☀️ 光照强度</div>
+                <div class="card-main"><div class="val" id="lx_val" style="color: #fbbf24;">----</div><div class="unit">ADC</div></div>
+            </div>
+            <div class="card">
+                <div class="card-header">💡 照明亮度</div>
+                <div class="card-main"><div class="val" id="lb_val" style="color: #facc15;">--</div><div class="unit">%</div></div>
+            </div>
+        </div>
+
+        <div class="chart-container" id="historyChart"></div>
+
+        <div class="bottom-layout">
+            <div class="sec-card">
+                <div>
+                    <div class="sec-title">🛡️ 仓储安全状态实时防护阵列</div>
+                    <div class="sec-grid">
+                        <div class="sec-item"><span class="sec-label">红外安防</span><span class="badge badge-ok" id="pir_badge">正常</span></div>
+                        <div class="sec-item"><span class="sec-label">火焰高危</span><span class="badge badge-ok" id="flm_badge">安全</span></div>
+                        <div class="sec-item"><span class="sec-label">资产柜锁</span><span class="badge badge-info" id="srv_badge">闭锁</span></div>
+                    </div>
+                </div>
+                <div style="font-size: 12px; color: #475569; text-align: center; margin-top: 15px;">数据边缘计算节点名称：STM32_C8T6_WMS</div>
+            </div>
+            
+            <div class="ctrl-group">
+                <div class="ctrl-card">
+                    <div class="sec-title" style="margin-bottom:0; padding-bottom:4px;">⚙️ 风机柔性调速控制面板</div>
+                    <div class="slider-wrapper">
+                        <input type="range" id="fanSlider" min="0" max="100" value="0" oninput="updateSliderDisp(this.value)" onchange="publishFanCmd(this.value)">
+                    </div>
+                    <div class="slider-row">
+                        <span style="font-size:12px; color:#64748b;">拖动滑块精确设定或点击右侧一键关闭</span>
+                        <span id="sliderDisp" style="font-size:16px; font-weight:bold; color:#38bdf8;">0%</span>
+                    </div>
+                    <button class="btn-stop" onclick="stopFan()"><span>🛑</span> 一键强行关闭风机</button>
+                </div>
+
+                <div class="ctrl-card">
+                    <div class="sec-title" style="margin-bottom:8px; padding-bottom:4px;">💡 智能灯光控制面板</div>
+                    <div style="display:flex; gap:10px; margin-bottom:12px;">
+                        <button id="btnAuto" onclick="setLedMode(1)" style="flex:1;padding:10px;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;background:#38bdf8;color:#0f172a;">🌙 自动调光</button>
+                        <button id="btnManual" onclick="setLedMode(0)" style="flex:1;padding:10px;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;background:#334155;color:#94a3b8;">🖐 手动控制</button>
+                    </div>
+                    <div class="slider-wrapper">
+                        <input type="range" id="ledSlider" min="0" max="100" value="0" disabled oninput="updateLedDisp(this.value)" onchange="publishLedCmd(this.value)">
+                    </div>
+                    <div class="slider-row">
+                        <span style="font-size:12px; color:#64748b;" id="ledHint">自动模式下由光敏电阻控制</span>
+                        <span id="ledDisp" style="font-size:16px; font-weight:bold; color:#facc15;">0%</span>
+                    </div>
+                    <div style="margin-top:10px; font-size:12px; color:#64748b; text-align:center;">
+                        当前模式: <span id="ledModeText" style="color:#38bdf8;font-weight:600;">自动调光中</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 📊 ECharts 图表初始化 ---
+        const chartDom = document.getElementById('historyChart');
+        const myChart = echarts.init(chartDom, 'dark'); 
+        let timeData = []; let tempData = []; let humiData = [];
+
+        const option = {
+            backgroundColor: 'transparent', 
+            title: { text: '温湿度边缘历史动态演变趋势', textStyle: { fontSize: 14, color: '#94a3b8', fontWeight: 600 }, left: 'center' },
+            tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f8fafc' } },
+            legend: { data: ['温度', '湿度'], top: '8%', textStyle: { color: '#94a3b8' } },
+            grid: { left: '4%', right: '4%', bottom: '10%', top: '22%', containLabel: true },
+            xAxis: { type: 'category', data: timeData, boundaryGap: false, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#64748b' } },
+            yAxis: { type: 'value', splitLine: { lineStyle: { color: 'rgba(51, 65, 85, 0.4)' } }, axisLabel: { color: '#64748b' } },
+            series: [
+                { name: '温度', type: 'line', data: tempData, smooth: true, showSymbol: false, itemStyle: { color: '#f43f5e' } },
+                { name: '湿度', type: 'line', data: humiData, smooth: true, showSymbol: false, itemStyle: { color: '#38bdf8' } }
+            ]
+        };
+        myChart.setOption(option);
+
+        // --- 📡 MQTT 核心通信群组 ---
+        const brokerIP = "192.168.123.59"; 
+        const brokerPort = 8083; 
+        
+        // 【关键改动】默认状态直接切为 1 (自动模式)
+        let g_ledMode = 1; 
+
+        const client = new Paho.MQTT.Client(brokerIP, Number(brokerPort), "/mqtt", "web_dashboard_" + Math.random().toString(16).substr(2, 8));
+
+        client.onConnectionLost = function(responseObject) {
+            const container = document.getElementById("status-container");
+            container.className = "sub";
+            document.getElementById("status").innerText = "与服务器断开";
+            document.getElementById("status").style.color = "#ef4444";
+            setTimeout(MQTT_Connect, 2000); 
+        };
+
+        client.onMessageArrived = function(message) {
+            if(message.destinationName === "wms/warehouse1/data") {
+                try {
+                    const data = JSON.parse(message.payloadString);
+                    
+                    document.getElementById('t_val').innerText = data.temp.toFixed(1);
+                    document.getElementById('h_val').innerText = data.humi.toFixed(1);
+                    document.getElementById('m_val').innerText = data.mq2;
+                    document.getElementById('f_val').innerText = data.fan;
+
+                    if (data.led_brightness !== undefined) document.getElementById("lb_val").innerText = data.led_brightness;
+                    if (data.light !== undefined) document.getElementById("lx_val").innerText = data.light;
+                    
+                    const p = document.getElementById('pir_badge');
+                    if (data.pir) { p.innerText = '⚠ 闯入'; p.className = 'badge badge-warn'; }
+                    else { p.innerText = '正常'; p.className = 'badge badge-ok'; }
+                    
+                    const l = document.getElementById('flm_badge');
+                    if (data.flame) { l.innerText = '🚨 火警'; l.className = 'badge badge-warn'; }
+                    else { l.innerText = '安全'; l.className = 'badge badge-ok'; }
+                    
+                    const s = document.getElementById('srv_badge');
+                    if (data.servo) { s.innerText = '已开锁'; s.className = 'badge badge-warn'; }
+                    else { s.innerText = '闭锁'; s.className = 'badge badge-info'; }
+
+                    // ❌ 【关键修复点】彻底删除了 data.led_mode 的判断！
+                    // 网页的按钮模式状态完全独立，拒绝听从单片机可能写错或未成功切换的 led_mode 上报
+
+                    const now = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+                    if(timeData.length > 30) {
+                        timeData.shift(); tempData.shift(); humiData.shift();
+                    }
+                    timeData.push(now); tempData.push(data.temp); humiData.push(data.humi);
+                    myChart.setOption({ xAxis: { data: timeData }, series: [{ data: tempData }, { data: humiData }] });
+
+                } catch (e) { console.error("数据解析异常: ", e); }
+            }
+        };
+
+        function MQTT_Connect() {
+            client.connect({
+                onSuccess: function() {
+                    const container = document.getElementById("status-container");
+                    container.className = "sub status-ready"; 
+                    document.getElementById("status").innerText = "运行中 (已就绪)";
+                    document.getElementById("status").style.color = "#10b981";
+                    client.subscribe("wms/warehouse1/data");
+                    
+                    // 连接成功后，初始化一次网页按钮状态
+                    refreshLedUiComponents(g_ledMode);
+                },
+                onFailure: function(err) {
+                    document.getElementById("status").innerText = "连接失败，正在重试...";
+                    setTimeout(MQTT_Connect, 2000);
+                }
+            });
+        }
+
+        MQTT_Connect();
+
+        function updateSliderDisp(val) { document.getElementById('sliderDisp').innerText = val + '%'; }
+
+        function publishFanCmd(val) {
+            const payload = JSON.stringify({ speed: parseInt(val) });
+            const message = new Paho.MQTT.Message(payload);
+            message.destinationName = "wms/warehouse1/cmd";
+            client.send(message);
+        }
+
+        function stopFan() {
+            document.getElementById('fanSlider').value = 0;
+            updateSliderDisp(0);
+            publishFanCmd(0);
+        }
+
+        function updateLedDisp(val) { document.getElementById('ledDisp').innerText = val + '%'; }
+
+        function publishLedCmd(val) {
+            if (g_ledMode === 1) return; 
+            const payload = JSON.stringify({ led_brightness: parseInt(val) });
+            const message = new Paho.MQTT.Message(payload);
+            message.destinationName = "wms/warehouse1/cmd";
+            client.send(message);
+        }
+
+        // 【关键修复点】按钮点击切换完全自闭环
+        function setLedMode(modeNum) {
+            g_ledMode = modeNum;
+            refreshLedUiComponents(modeNum);
+
+            // 持续向单片机灌输网页想要改变的模式状态
+            const payload = JSON.stringify({ led_mode: modeNum === 1 ? "auto" : "manual" });
+            const message = new Paho.MQTT.Message(payload);
+            message.destinationName = "wms/warehouse1/cmd";
+            client.send(message);
+        }
+
+        function refreshLedUiComponents(mode) {
+            const btnA = document.getElementById("btnAuto");
+            const btnM = document.getElementById("btnManual");
+            const slider = document.getElementById("ledSlider");
+            const hint = document.getElementById("ledHint");
+            const txt  = document.getElementById("ledModeText");
+
+            if (mode === 1) {
+                btnA.style.background = '#38bdf8'; btnA.style.color = '#0f172a';
+                btnM.style.background = '#334155'; btnM.style.color = '#94a3b8';
+                slider.disabled = true;
+                hint.innerText = '自动模式下由光敏电阻控制';
+                txt.innerText = '自动调光中'; txt.style.color = '#38bdf8';
+            } else {
+                btnA.style.background = '#334155'; btnA.style.color = '#94a3b8';
+                btnM.style.background = '#38bdf8'; btnM.style.color = '#0f172a';
+                slider.disabled = false;
+                hint.innerText = '手动模式下拖动设定亮度';
+                txt.innerText = '手动控制中'; txt.style.color = '#facc15';
+            }
+        }
+
+        window.addEventListener('resize', () => { myChart.resize(); });
+    </script>
+</body>
+</html>
